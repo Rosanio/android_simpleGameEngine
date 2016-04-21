@@ -1,6 +1,7 @@
 package com.epicodus.simplegameengine;
 
 import android.app.Activity;
+import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
@@ -8,56 +9,118 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.util.Log;
+import android.view.MotionEvent;
+import android.view.SurfaceHolder;
+import android.view.SurfaceView;
 import android.widget.ImageView;
 
 public class MainActivity extends Activity {
+
+    GameView gameView;
 
     ImageView ourView;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        draw();
-        setContentView(ourView);
+
+        gameView = new GameView(this);
+
+        //old code
+        setContentView(gameView);
     }
 
-    public void draw() {
-        //Bitmaps are a sort of blank graphic to draw upon.
-        Bitmap blankBitmap;
-        //parameters are length, width, and format
-        blankBitmap = Bitmap.createBitmap(600, 600, Bitmap.Config.ARGB_8888);
+    class GameView extends SurfaceView implements Runnable {
+        Thread gameThread = null;
+        SurfaceHolder ourHolder;
+        volatile boolean playing;
         Canvas canvas;
-        canvas = new Canvas(blankBitmap);
-        //ourview is set as the content view in onCreate, so setting ourview equal to our bitmap will
-        // render whatever is drawn on the bitmap to the screen
-        ourView = new ImageView(this);
-        ourView.setImageBitmap(blankBitmap);
-
-        //paint is an object which lets you draw on the canvas
         Paint paint;
-        paint = new Paint();
-        //make canvas background color white
-        canvas.drawColor(Color.argb(255, 255, 255, 255));
-        //make paint color blue
-        paint.setColor(Color.argb(255, 26, 128, 182));
-
+        long fps;
+        private long timeThisFrame;
         Bitmap bitmapBob;
-        //decoderesource is probably magic, might be useful to decode other sprites which are png files
-        bitmapBob = BitmapFactory.decodeResource(this.getResources(), R.drawable.bob);
-        //parameters for drawBitmap are bitmap, x-location, y-location, and paint (not sure why for
-        // this last one)
-        canvas.drawBitmap(bitmapBob, 500, 50, paint);
-        //parameters for drawLine are startX, startY, endX, endY, paint (for color)
-        canvas.drawLine(50, 50, 250, 250, paint);
-        //parameters for drawText are text, startX, startY, paint
-        canvas.drawText("Game Code School", 50, 50, paint);
-        //parameters for drawPoint are x, y, paint
-        canvas.drawPoint(40, 50, paint);
-        //parameters for drawCircle are centerX, centerY, radius, paint
-        canvas.drawCircle(350, 250, 100, paint);
-        //make paint orange
-        paint.setColor(Color.argb(255, 249, 129, 0));
-        //parameters for drawRect are leftSideX, topSideY, rightSideX, bottomSideY, paint
-        canvas.drawRect(50, 450, 500, 550, paint);
+        boolean isMoving = false;
+        float walkSpeedPerSecond = 150;
+        float bobXPosition = 10;
+
+        public GameView(Context context) {
+            super(context);
+            ourHolder = getHolder();
+            paint = new Paint();
+            bitmapBob = BitmapFactory.decodeResource(this.getResources(), R.drawable.bob);
+        }
+
+        @Override
+        public void run() {
+            while(playing) {
+                long startFrameTime = System.currentTimeMillis();
+                update();
+                draw();
+                timeThisFrame = System.currentTimeMillis()-startFrameTime;
+                if(timeThisFrame > 0) {
+                    fps = 1000/timeThisFrame;
+                }
+            }
+        }
+
+        public void update() {
+            if(isMoving) {
+                bobXPosition = bobXPosition + (walkSpeedPerSecond / fps);
+            }
+        }
+
+        public void draw() {
+            if(ourHolder.getSurface().isValid()) {
+                canvas = ourHolder.lockCanvas();
+                canvas.drawColor(Color.argb(255, 26, 128, 182));
+                paint.setColor(Color.argb(255, 249, 129, 0));
+                paint.setTextSize(45);
+                canvas.drawText("FPS: " + fps, 20, 40, paint);
+                canvas.drawBitmap(bitmapBob, bobXPosition, 200, paint);
+                ourHolder.unlockCanvasAndPost(canvas);
+            }
+        }
+
+        public void pause() {
+            playing = false;
+            try {
+                gameThread.join();
+            } catch (InterruptedException e) {
+                Log.e("Error:", "joining thread");
+            }
+        }
+
+        public void resume() {
+            playing = true;
+            gameThread = new Thread(this);
+            gameThread.start();
+        }
+
+        @Override
+        public boolean onTouchEvent(MotionEvent motionEvent) {
+            switch(motionEvent.getAction() & MotionEvent.ACTION_MASK) {
+                case MotionEvent.ACTION_DOWN:
+                    isMoving = true;
+                    break;
+                case MotionEvent.ACTION_UP:
+                    isMoving = false;
+                    break;
+
+            }
+            return true;
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        gameView.resume();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        gameView.pause();
     }
 }
